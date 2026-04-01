@@ -166,12 +166,15 @@ def extract_features_from_graph(G, epitope_set):
             'res_id': res_id,
             'aa': aa,
             'degree': G.nodes[node]['degree'],
-            'surface_score': max(0, 1.5 - G.nodes[node]['degree'] / 7.0),
+            'surface_score': max(0, 1.5 - G.nodes[node]['degree'] / 6.5),
             'hydro_score': get_hydro_score(aa),
             'region_label': get_region_label(res_id),
             'approx_sasa': approximate_sasa(G, node),
             'conservation': compute_conservation(res_id),
-            'epitope_label': 1 if res_id in epitope_set else 0
+            'epitope_label': 1 if res_id in epitope_set else 0,
+            'clustering': G.nodes[node].get('clustering', 0.0),
+            'avg_neighbor_degree': G.nodes[node].get('avg_neighbor_degree', 0.0),
+            'coreness': G.nodes[node].get('coreness', 0),
         }
         aa_oh = aa_to_onehot(aa)
         for i, val in enumerate(aa_oh):
@@ -195,6 +198,12 @@ def generate_dataset():
         # Build RIN
         G = build_rin(coords, seq, res_ids)
         G.graph['pdb_id'] = pdb_id
+
+        # Добавляем топологические признаки
+        clustering = nx.clustering(G)
+        avg_neighbor_deg = {n: np.mean([G.degree(nei) for nei in G.neighbors(n)]) if G.degree(n) > 0 else 0 for n in
+                            G.nodes}
+        coreness = nx.core_number(G)
 
         epitope_set = set(epitope_list)
         feats = extract_features_from_graph(G, epitope_set)
