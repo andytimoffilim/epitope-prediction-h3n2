@@ -38,14 +38,14 @@ df = pd.read_csv("h3n2_epitope_dataset.csv")
 # Features: base structural/evolutionary + new topological features
 feature_cols = [
     "degree",
-    "clustering",            # NEW: local clustering coefficient
-    "avg_neighbor_degree",   # NEW: average degree of neighbors
-    "coreness",              # NEW: k-core number
+    "clustering",
+    "avg_neighbor_degree",
+    "coreness",
     "surface_score",
     "hydro_score",
     "approx_sasa",
-    "conservation",
-] + [f"aa_oh_{i}" for i in range(20)]
+  #  "conservation",
+] #+ [f"aa_oh_{i}" for i in range(20)]
 
 # One‑hot encoding for region labels
 region_dummies = pd.get_dummies(df["region_label"], prefix="region")
@@ -88,7 +88,7 @@ for fold, (train_idx, test_idx) in enumerate(logo.split(X, y, groups)):
 
     # --- MLP ---
     mlp = MLPClassifier(
-        hidden_layer_sizes=(256, 128, 64),
+        hidden_layer_sizes=(256, 128,64),
         max_iter=500,
         random_state=623,
         early_stopping=True,

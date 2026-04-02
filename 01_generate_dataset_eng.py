@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """
-Step 1: Generate dataset for H3N2 HA epitope prediction.
-
-Purpose:
-    Download PDB structures, build RIN graphs, compute features,
-    and save tabular dataset and graphs for further experiments.
-
-Input:
-    - PDB IDs are hardcoded in H3N2_STRUCTURES dictionary.
-    - Optional: h3n2_alignment.fasta for conservation scores.
-
-Output:
-    - h3n2_epitope_dataset.csv – tabular dataset (rows = residues, columns = features).
-    - h3n2_gnn_graphs.pt – graphs for GNN (optional).
-
-Dependencies:
-    - numpy, pandas, networkx, scipy, torch, torch_geometric, requests.
+Step 1: Generate dataset for H3N2 HA epitope prediction (OLD STRUCTURES ONLY).
+Fixed: topological features are now assigned to graph nodes.
 """
 
 import numpy as np
@@ -150,6 +136,7 @@ def build_rin(coords, seq, res_ids, distance_cutoff=8.0):
         for j in range(i+1, n):
             if dist[i, j] < distance_cutoff:
                 G.add_edge(i, j, dist=dist[i, j])
+    # Initial degree (will be updated after adding all nodes)
     for node in G.nodes:
         G.nodes[node]['degree'] = G.degree(node)
     return G
@@ -162,6 +149,7 @@ def extract_features_from_graph(G, epitope_set):
         res_id = G.nodes[node]['res_id']
         feat = {
             'pdb_id': G.graph.get('pdb_id', 'unknown'),
+            'chain': G.graph.get('chain', 'A'),
             'node_idx': node,
             'res_id': res_id,
             'aa': aa,
@@ -198,18 +186,30 @@ def generate_dataset():
         # Build RIN
         G = build_rin(coords, seq, res_ids)
         G.graph['pdb_id'] = pdb_id
+        G.graph['chain'] = 'A'   # assumed chain for old structures
 
-        # Добавляем топологические признаки
+        # Compute topological features
         clustering = nx.clustering(G)
-        avg_neighbor_deg = {n: np.mean([G.degree(nei) for nei in G.neighbors(n)]) if G.degree(n) > 0 else 0 for n in
-                            G.nodes}
+        avg_neighbor_deg = {}
+        for n in G.nodes:
+            neighbors = list(G.neighbors(n))
+            if G.degree(n) > 0:
+                avg_neighbor_deg[n] = np.mean([G.degree(nei) for nei in neighbors])
+            else:
+                avg_neighbor_deg[n] = 0.0
         coreness = nx.core_number(G)
+
+        # Assign topological features to nodes
+        for node in G.nodes:
+            G.nodes[node]['clustering'] = clustering[node]
+            G.nodes[node]['avg_neighbor_degree'] = avg_neighbor_deg[node]
+            G.nodes[node]['coreness'] = coreness[node]
 
         epitope_set = set(epitope_list)
         feats = extract_features_from_graph(G, epitope_set)
         all_features.extend(feats)
 
-        # Create PyG Data object
+        # Create PyG Data object (using same features as in table)
         node_features = []
         labels = []
         for node in sorted(G.nodes):
@@ -220,9 +220,11 @@ def generate_dataset():
             region_onehot = [0]*6
             region_onehot[region_map[region]] = 1
 
+            # Use the same surface_score formula as in table
+            surface_score = max(0, 1.5 - G.nodes[node]['degree'] / 6.5)
             feat_vec = [
                 G.nodes[node]['degree'],
-                max(0, 4.0 - G.nodes[node]['degree'] / 3.5),  # surface_score
+                surface_score,
                 get_hydro_score(aa),
                 approximate_sasa(G, node),
                 compute_conservation(G.nodes[node]['res_id']),
