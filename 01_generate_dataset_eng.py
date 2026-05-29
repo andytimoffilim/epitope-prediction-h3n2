@@ -246,7 +246,7 @@ def generate_dataset():
 
         data = Data(
             x=torch.tensor(node_features, dtype=torch.float),
-            edge_index=edge_index,
+            edge_index=edge_index, 
             y=torch.tensor(labels, dtype=torch.long),
             pdb_id=pdb_id,
             num_nodes=len(node_features)

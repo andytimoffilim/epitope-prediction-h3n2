@@ -26,19 +26,19 @@ def parse_args():
 def load_data(csv_path, old_only=False):
     df = pd.read_csv(csv_path)
     if old_only:
-        # Список старых структур (из H3N2_STRUCTURES)
+        # List of old structures (from H3N2_STRUCTURES)
         old_pdbs = [
             '7RS1', '6XPO', '3WHE', '5HMB', '4FNK', '3ZNZ', '2YPG', '3HMX',
             '1TI8', '2IBX', '5FTG', '6WXY', '6MZK', '6WXB', '9CXU'
         ]
         df = df[df['pdb_id'].isin(old_pdbs)]
-        print(f"Используются только старые структуры: {df['pdb_id'].nunique()} шт.")
+        print(f"Using only old structures: {df['pdb_id'].nunique()} entries.")
     else:
-        print(f"Используются все структуры: {df['pdb_id'].nunique()} шт.")
+        print(f"Using all structures: {df['pdb_id'].nunique()} entries.")
     return df
 
 def prepare_features(df):
-    # Признаки: все числовые колонки, кроме идентификаторов и метки
+    # Features: all numeric columns except identifiers and the target label
     exclude = ['pdb_id', 'chain', 'node_idx', 'res_id', 'aa', 'epitope_label', 'region_label']
     feature_cols = [c for c in df.columns if c not in exclude and df[c].dtype in ['int64', 'float64']]
     X = df[feature_cols].values
@@ -48,32 +48,32 @@ def prepare_features(df):
 def main():
     args = parse_args()
     df = load_data(args.csv, old_only=args.old_only)
-    print(f"Общее количество образцов: {len(df)}")
-    print(f"Доля эпитопов: {df['epitope_label'].mean():.4f}")
+    print(f"Total number of samples: {len(df)}")
+    print(f"Epitope fraction: {df['epitope_label'].mean():.4f}")
 
     X, y, feature_names = prepare_features(df)
-    print(f"Количество признаков: {len(feature_names)}")
+    print(f"Number of features: {len(feature_names)}")
 
-    # Разделение на train/test для оценки важности (не для финальной модели)
+    # Split into train/test for importance evaluation (not for final model)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
-    # Масштабирование не обязательно для RF, но для единообразия
+    # Scaling is not strictly necessary for RF, but we do it for consistency
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Обучение Random Forest
+    # Train Random Forest
     rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight='balanced')
     rf.fit(X_train_scaled, y_train)
     print(f"RF Accuracy on test: {rf.score(X_test_scaled, y_test):.4f}")
 
-    # Встроенная важность
+    # Built-in importance
     importances = rf.feature_importances_
-    # Permutation importance (более надёжная, но медленнее)
+    # Permutation importance (more robust but slower)
     perm_importance = permutation_importance(rf, X_test_scaled, y_test, n_repeats=10, random_state=42, n_jobs=-1)
 
-    # Собираем результаты
+    # Assemble results
     results = pd.DataFrame({
         'feature': feature_names,
         'importance_rf': importances,
@@ -81,21 +81,21 @@ def main():
         'importance_perm_std': perm_importance.importances_std
     }).sort_values('importance_rf', ascending=False)
 
-    print("\nТоп-15 наиболее важных признаков (RF importance):")
+    print("\nTop-15 most important features (RF importance):")
     print(results.head(15).to_string(index=False))
 
-    print("\nПризнаки с нулевой или очень низкой важностью (<0.001):")
+    print(f"\nFeatures with zero or very low importance (<{args.importance_threshold}):")
     low_importance = results[results['importance_rf'] < args.importance_threshold]
     if low_importance.empty:
-        print("  Нет таких признаков.")
+        print("  No such features.")
     else:
         print(low_importance[['feature', 'importance_rf']].to_string(index=False))
 
-    # Сохраняем результаты
+    # Save results
     results.to_csv(args.output, index=False)
-    print(f"\nРезультаты сохранены в {args.output}")
+    print(f"\nResults saved to {args.output}")
 
-    # Визуализация
+    # Visualization
     plt.figure(figsize=(12, 8))
     top_n = min(30, len(results))
     plt.barh(results['feature'][:top_n][::-1], results['importance_rf'][:top_n][::-1], color='steelblue')
@@ -104,16 +104,16 @@ def main():
     plt.tight_layout()
     plt.savefig('feature_importance.png', dpi=150)
     plt.show()
-    print("График сохранён как feature_importance.png")
+    print("Plot saved as feature_importance.png")
 
-    # Рекомендация по удалению признаков
+    # Recommendation for feature removal
     if not low_importance.empty:
-        print("\n=== РЕКОМЕНДАЦИЯ ===")
-        print(f"Признаки с важностью < {args.importance_threshold} можно удалить. Их {len(low_importance)} шт.")
-        print("Удаление этих признаков может упростить модель без потери качества.")
-        print("Для проверки обучите модель без них и сравните метрики (ROC-AUC, PR-AUC).")
+        print(f"\n=== RECOMMENDATION ===")
+        print(f"Features with importance < {args.importance_threshold} can be removed. There are {len(low_importance)} such features.")
+        print("Removing these features may simplify the model without loss of quality.")
+        print("To verify, train a model without them and compare metrics (ROC-AUC, PR-AUC).")
     else:
-        print("\nВсе признаки имеют ненулевую важность. Удаление не рекомендуется.")
+        print("\nAll features have non-zero importance. Removal is not recommended.")
 
 if __name__ == "__main__":
     main()
